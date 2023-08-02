@@ -1,0 +1,16 @@
+{
+    "solidity.packageDefaultDependenciesContractsDirectory": "src",
+    "solidity.packageDefaultDependenciesDirectory": "lib",
+    "commentBox.styles": {
+        "defaultStyle": {
+            "commentStartToken": "/*\n",
+            "commentEndToken": "##\n*/",
+            "leftEdgeToken": "# ",
+            "rightEdgeToken": " #",
+            "topEdgeToken": "#",
+            "bottomEdgeToken": "#",
+            "topRightToken": "##",
+            "bottomLeftToken": "##",
+        }
+    }
+}
