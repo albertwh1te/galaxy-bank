@@ -13,7 +13,8 @@ import {GalaxyUSD} from "./GalaxyUSD.sol";
 import {SafeChainlinkLib} from "./SafeChainlinkLib.sol";
 
 /* 
-    TODO: implement me
+    @title: GalaxyBank
+    @dev: GalaxyBank is a contract that allows users to deposit collateral and mint GalaxyUSD
 */
 contract GalaxyBank is Owned, ReentrancyGuard {
     /*
@@ -24,6 +25,17 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     error GalaxyBank__NeedsMoreThanZero();
     error GalaxyBank__LengthMismatch();
     error GalaxyBank__CollateralNotSupported();
+    error GalaxyBank__BreaksHealthFactor();
+
+    /*
+    #########
+    # EVENT #
+    #########
+    */
+    event CollateralDeposited(address indexed user, address indexed token, uint256 indexed amount);
+    event CollateralRedeemed(
+        address indexed redeemedFrom, address indexed redeemedTo, address indexed token, uint256 amount
+    );
 
     /*
     ############
@@ -32,6 +44,15 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     */
     using SafeTransferLib for ERC20;
     using SafeChainlinkLib for IAggregatorV3;
+
+    /*
+    ############
+    # CONSTANT #
+    ############
+    */
+    uint256 private constant MIN_HEALTH_FACTOR = 1e18;
+    uint256 private constant LIQUIDATION_THRESHOLD = 50; // 200% overcollateralized
+    uint256 private constant LIQUIDATION_PRECISION = 100;
 
     /*
     ###################
@@ -51,6 +72,11 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     mapping(address user => mapping(address token => uint256 amount)) private collateralDeposited;
     mapping(address user => uint256 gusdMinetedAmount) private gusdMinted;
 
+    /*
+    ###############
+    # CONSTRUCTOR #
+    ###############
+    */
     constructor(address _galaxyUsd) Owned(msg.sender) {
         gusd = GalaxyUSD(_galaxyUsd);
     }
@@ -75,22 +101,31 @@ contract GalaxyBank is Owned, ReentrancyGuard {
         _;
     }
 
-    // TODO: implement below functions
     /*
     ######################
-    # INTERNAL FUNCTIONX #
+    # INTERNAL FUNCTIONS #
     ######################
     */
 
     function _redeemCollateral(address from, address to, address tokenCollateralAddress, uint256 amountCollateral)
         internal
-    {}
+    {
+        collateralDeposited[from][tokenCollateralAddress] -= amountCollateral;
+        emit CollateralRedeemed(from, to, tokenCollateralAddress, amountCollateral);
+        ERC20(tokenCollateralAddress).safeTransfer(to, amountCollateral);
+    }
 
     function _calculateHealthFactor(uint256 totalDscMinted, uint256 collateralValueInUsd)
         internal
-        pure
+        // pure
+        view
         returns (uint256)
-    {}
+    {
+        if (totalDscMinted == 0) return 1e18;
+        uint256 collateralAdjustedForThreshold = (collateralValueInUsd * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
+        console.log("collateralValueInUsd", collateralValueInUsd, "totalDscMinted", totalDscMinted);
+        return (collateralAdjustedForThreshold * 1e18) / totalDscMinted;
+    }
 
     function _getAccountInformation(address user)
         private
@@ -108,7 +143,6 @@ contract GalaxyBank is Owned, ReentrancyGuard {
             address token = collateralTokens[i];
             uint256 amount = collateralDeposited[user][token];
             totalCollateralValueInUsd += _getUsdValue(token, amount);
-            console.log("amount", amount, "totalCollateralValueInUsd", totalCollateralValueInUsd);
         }
         return totalCollateralValueInUsd;
     }
@@ -118,7 +152,7 @@ contract GalaxyBank is Owned, ReentrancyGuard {
         (, int256 price,,,) = priceFeed.safeGetLatestPrice();
         uint256 addtionalFeedPrecision = ERC20(token).decimals() - priceFeed.decimals();
         // if price feed percision is 8, and erc20 is 18, then we need to multiply by 10 ** (18-8) = 10 ** 10
-        // price * 1e10(price feed percision, already have) * 108(addtionalFeedPrecision) * amount / 1e18(erc20 percision)
+        // price * 1e8(price feed percision, already have) * 1e10(addtionalFeedPrecision) * amount / 1e18(erc20 percision)
         return ((uint256(price) * (10 ** addtionalFeedPrecision)) * amount) / (10 ** ERC20(token).decimals());
     }
 
@@ -137,17 +171,39 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     */
     function _depositCollateral(address collateral, uint256 amount) internal {
         collateralDeposited[msg.sender][collateral] += amount;
+        emit CollateralDeposited(msg.sender, collateral, amount);
         ERC20(collateral).transferFrom(msg.sender, address(this), amount);
     }
 
+    function _healthFactor(address user) private view returns (uint256) {
+        (uint256 totalDscMinted, uint256 collateralValueInUsd) = _getAccountInformation(user);
+        return _calculateHealthFactor(totalDscMinted, collateralValueInUsd);
+    }
+
     /*
-        @dev: low leve function to mint DSC, no parameter validation
+        @dev: check if the health factor is broken, if it is, revert the transaction
     */
-    function safeMint(uint256 amount) internal {
+    function _revertIfHealthFactorIsBroken(address user) internal view {
+        uint256 userHealthFactor = _healthFactor(user);
+        // todo: delete log
+        console.log("userHealthFactor", userHealthFactor);
+        if (userHealthFactor < MIN_HEALTH_FACTOR) {
+            revert GalaxyBank__BreaksHealthFactor();
+        }
+    }
+
+    /*
+        @dev: low leve function to mint DSC, need parameter validation before call this
+    */
+    function _safeMint(uint256 amount) internal {
         gusdMinted[msg.sender] += amount;
-        // TODO: add health factor check
-        // _revertIfHealthFactorIsBroken(msg.sender);
+        _revertIfHealthFactorIsBroken(msg.sender);
         gusd.mint(msg.sender, amount);
+    }
+
+    function _burn(uint256 amount) internal {
+        gusdMinted[msg.sender] -= amount;
+        gusd.burn(msg.sender, amount);
     }
 
     /*
@@ -186,11 +242,14 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     ##################
     */
 
-    function depositCollateralAndMint(address tokenCollateralAddress, uint256 amountCollateral, uint256 gusdAmount)
+    function depositCollateralAndMint(address collateral, uint256 amount, uint256 gusdAmount)
         external
+        nonReentrant
+        moreThanZero(amount)
+        onlySupportedCollateral(collateral)
     {
-        _depositCollateral(tokenCollateralAddress, amountCollateral);
-        gusd.mint(msg.sender, gusdAmount);
+        _depositCollateral(collateral, amount);
+        _safeMint(gusdAmount);
     }
 
     function depositCollateral(address collateral, uint256 amount)
@@ -202,10 +261,28 @@ contract GalaxyBank is Owned, ReentrancyGuard {
         _depositCollateral(collateral, amount);
     }
 
-    function redeemCollateralForGusd(address tokenCollateralAddress, uint256 amountCollateral, uint256 amountDscToBurn)
+    function mintGusd(uint256 amount) external nonReentrant moreThanZero(amount) {
+        _safeMint(amount);
+    }
+
+    function redeemCollateral(address collateral, uint256 amount)
         external
+        moreThanZero(amount)
+        onlySupportedCollateral(collateral)
+        nonReentrant
     {
-        // gusd.burn(msg.sender,);
+        _redeemCollateral(msg.sender, msg.sender, collateral, amount);
+        _revertIfHealthFactorIsBroken(msg.sender);
+    }
+
+    function redeemCollateralForGusd(address collateral, uint256 amount, uint256 burnGusdAmount)
+        external
+        moreThanZero(amount)
+        moreThanZero(burnGusdAmount)
+    {
+        _redeemCollateral(msg.sender, address(this), collateral, amount);
+        _burn(burnGusdAmount);
+        _revertIfHealthFactorIsBroken(msg.sender);
     }
 
     function liquidate(address collateral, address user, uint256 debtToCover)
