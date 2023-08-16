@@ -16,6 +16,11 @@ contract TestGalaxyBank is Test {
     // 18 - 8(from chainlink precision)
     uint256 private constant defaulAddtionalDecimals = 10;
 
+    uint256 BTC_START_PRICE = 3139151000000;
+    uint256 ETH_START_PRICE = 184165000000;
+
+    uint8 CHAINLINK_DEFAUL_DECIMAL = 8;
+
     MockV3Aggregator private btcPriceFeed;
     MockV3Aggregator private ethPriceFeed;
     MockV3Aggregator private gmxPriceFeed;
@@ -44,9 +49,9 @@ contract TestGalaxyBank is Test {
 
     function initMockData() public {
         uint8 chainlinkDefaulDecimal = 8;
-        uint256 btcPrice = 30000 * (10 ** chainlinkDefaulDecimal);
+        uint256 btcPrice = BTC_START_PRICE;
         btcPriceFeed = new MockV3Aggregator(chainlinkDefaulDecimal, int256(btcPrice));
-        uint256 ethPrice = 1800 * (10 ** chainlinkDefaulDecimal);
+        uint256 ethPrice = ETH_START_PRICE;
         ethPriceFeed = new MockV3Aggregator(chainlinkDefaulDecimal, int256(ethPrice));
         uint256 gmxPrice = 51 * (10 ** chainlinkDefaulDecimal);
         gmxPriceFeed = new MockV3Aggregator(chainlinkDefaulDecimal, int256(gmxPrice));
@@ -130,8 +135,8 @@ contract TestGalaxyBank is Test {
         (uint256 usdMinted, uint256 collateral) = bank.getAccountInformation(frank);
         console.log("usdMinted", usdMinted, "collateral", collateral);
         assertEq(usdMinted, 0);
-        uint256 btcPrice = 30000 * 1e18;
-        assertEq(collateral, amount * btcPrice / 1e18);
+        uint256 btcPrice = BTC_START_PRICE;
+        assertEq(collateral, amount * btcPrice * 1e18 / ((10 ** CHAINLINK_DEFAUL_DECIMAL) * 1e18));
         vm.stopPrank();
     }
 
@@ -211,9 +216,36 @@ contract TestGalaxyBank is Test {
 
         bank.redeemCollateralForGusd(address(btc), amount, mintAmount);
 
-        vm.expectRevert(GalaxyBank.GalaxyBank__BreaksHealthFactor.selector);
+        vm.expectRevert(GalaxyBank.GalaxyBank__NotEnoughCollateral.selector);
         bank.redeemCollateral(address(btc), amount);
 
+        vm.stopPrank();
+    }
+
+    function testLiquidate() public {
+        uint256 amount = 10 * 1e18;
+        uint256 mintAmount = 150000 * 1e18;
+
+        _addCommonColleralTokens();
+
+        vm.startPrank(frank);
+        btc.mint(frank, amount);
+        btc.approve(address(bank), amount);
+        bank.depositCollateral(address(btc), amount);
+        bank.mintGusd(mintAmount);
+        vm.stopPrank();
+
+        // update price
+        uint8 chainlinkDefaulDecimal = 8;
+        uint256 btcPrice = 2839151000000;
+        btcPriceFeed.updateAnswer(int256(btcPrice));
+
+        vm.startPrank(alice);
+        btc.mint(alice, amount * 10);
+        btc.approve(address(bank), amount * 10);
+        bank.depositCollateral(address(btc), amount * 10);
+        bank.mintGusd(mintAmount * 2);
+        bank.liquidate(address(btc), frank, mintAmount);
         vm.stopPrank();
     }
 }

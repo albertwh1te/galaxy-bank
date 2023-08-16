@@ -76,12 +76,12 @@ contract GalaxyUSD is ERC20, Owned {
         return super.transferFrom(from, to, newAmount);
     }
 
-    function burn(address to, uint256 amount) external onlyOwner moreThanZero(amount) {
-        uint256 balance = balanceOf[to];
+    function burn(address from, uint256 amount) external onlyOwner moreThanZero(amount) {
+        uint256 balance = balanceOf[from];
         if (balance < amount) {
             revert GalaxyUSD__NotEnoughBalance();
         }
-        _burn(to, amount);
+        _burn(from, amount);
     }
 
     function mint(address to, uint256 amount) external onlyOwner moreThanZero(amount) {

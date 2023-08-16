@@ -26,6 +26,10 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     error GalaxyBank__LengthMismatch();
     error GalaxyBank__CollateralNotSupported();
     error GalaxyBank__BreaksHealthFactor();
+    error GalaxyBank__HealthFactorIsNotBroken();
+    error GalaxyBank__HealthFactorNotImproved();
+    error GalaxyBank__DebtToCoverIsGreaterThanGusdMinted();
+    error GalaxyBank__NotEnoughCollateral();
 
     /*
     #########
@@ -52,6 +56,7 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     */
     uint256 private constant MIN_HEALTH_FACTOR = 1e18;
     uint256 private constant LIQUIDATION_THRESHOLD = 50; // 200% overcollateralized
+    uint256 private constant LIQUIDATION_BONUS = 10;
     uint256 private constant LIQUIDATION_PRECISION = 100;
 
     /*
@@ -110,6 +115,9 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     function _redeemCollateral(address from, address to, address tokenCollateralAddress, uint256 amountCollateral)
         internal
     {
+        if (collateralDeposited[from][tokenCollateralAddress] < amountCollateral) {
+            revert GalaxyBank__NotEnoughCollateral();
+        }
         collateralDeposited[from][tokenCollateralAddress] -= amountCollateral;
         emit CollateralRedeemed(from, to, tokenCollateralAddress, amountCollateral);
         ERC20(tokenCollateralAddress).safeTransfer(to, amountCollateral);
@@ -147,13 +155,22 @@ contract GalaxyBank is Owned, ReentrancyGuard {
         return totalCollateralValueInUsd;
     }
 
+    function _getTokenAmountFromUsd(address token, uint256 usdAmount) internal view returns (uint256 tokenAmount) {
+        IAggregatorV3 priceFeed = IAggregatorV3(tokenPriceFeed[token]);
+        (, int256 price,,,) = priceFeed.safeGetLatestPrice();
+        console.log("priceFeed.decimals()", priceFeed.decimals());
+        return usdAmount / uint256(price) * (10 ** priceFeed.decimals());
+    }
+
     function _getUsdValue(address token, uint256 amount) internal view returns (uint256) {
         IAggregatorV3 priceFeed = IAggregatorV3(tokenPriceFeed[token]);
         (, int256 price,,,) = priceFeed.safeGetLatestPrice();
         uint256 addtionalFeedPrecision = ERC20(token).decimals() - priceFeed.decimals();
-        // if price feed percision is 8, and erc20 is 18, then we need to multiply by 10 ** (18-8) = 10 ** 10
-        // price * 1e8(price feed percision, already have) * 1e10(addtionalFeedPrecision) * amount / 1e18(erc20 percision)
-        return ((uint256(price) * (10 ** addtionalFeedPrecision)) * amount) / (10 ** ERC20(token).decimals());
+        console.log("amount", amount);
+
+        // chainlink_price * token_amount * gusd_decimal/(price_feed_decimal*token_decimal)
+        return ((uint256(price)) * amount * (10 ** gusd.decimals()))
+            / (10 ** priceFeed.decimals() * (10 ** ERC20(token).decimals()));
     }
 
     function _removeTokenFromCollateralList(address token) internal {
@@ -281,7 +298,9 @@ contract GalaxyBank is Owned, ReentrancyGuard {
         moreThanZero(burnGusdAmount)
     {
         _redeemCollateral(msg.sender, address(this), collateral, amount);
+        console.log("redeemed");
         _burn(burnGusdAmount);
+        console.log("burned");
         _revertIfHealthFactorIsBroken(msg.sender);
     }
 
@@ -289,7 +308,37 @@ contract GalaxyBank is Owned, ReentrancyGuard {
         external
         moreThanZero(debtToCover)
         nonReentrant
-    {}
+    {
+        uint256 startingUserHealthFactor = _healthFactor(user);
+        if (startingUserHealthFactor >= MIN_HEALTH_FACTOR) {
+            revert GalaxyBank__HealthFactorIsNotBroken();
+        }
+
+        uint256 tokenAmount = _getTokenAmountFromUsd(collateral, debtToCover);
+
+        console.log("tokenAmount: ", tokenAmount);
+
+        uint256 bonusCollateral = (tokenAmount * LIQUIDATION_BONUS) / LIQUIDATION_PRECISION;
+
+        uint256 totalCollateralToRedeem = tokenAmount + bonusCollateral;
+
+        console.log("totalCollateralToRedeem: ", totalCollateralToRedeem);
+
+        _redeemCollateral(user, msg.sender, collateral, totalCollateralToRedeem);
+
+        // burn gusd from msg.sender, and reduce the debt of the user
+        if (gusdMinted[user] < debtToCover) {
+            revert GalaxyBank__DebtToCoverIsGreaterThanGusdMinted();
+        }
+        gusd.burn(msg.sender, debtToCover);
+        gusdMinted[user] -= debtToCover;
+
+        uint256 endingUserHealthFactor = _healthFactor(user);
+        if (endingUserHealthFactor <= startingUserHealthFactor) {
+            revert GalaxyBank__HealthFactorNotImproved();
+        }
+        _revertIfHealthFactorIsBroken(msg.sender);
+    }
 
     /*
     #################
