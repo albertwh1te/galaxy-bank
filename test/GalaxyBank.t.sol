@@ -12,6 +12,9 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 contract TestGalaxyBank is Test {
     using FixedPointMathLib for uint256;
 
+    uint256 private constant LIQUIDATION_THRESHOLD = 50; // 200% overcollateralized
+    uint256 private constant LIQUIDATION_PRECISION = 100;
+
     uint256 private constant FEE = 3;
     // 18 - 8(from chainlink precision)
     uint256 private constant defaulAddtionalDecimals = 10;
@@ -236,7 +239,6 @@ contract TestGalaxyBank is Test {
         vm.stopPrank();
 
         // update price
-        uint8 chainlinkDefaulDecimal = 8;
         uint256 btcPrice = 2839151000000;
         btcPriceFeed.updateAnswer(int256(btcPrice));
 
@@ -246,6 +248,52 @@ contract TestGalaxyBank is Test {
         bank.depositCollateral(address(btc), amount * 10);
         bank.mintGusd(mintAmount * 2);
         bank.liquidate(address(btc), frank, mintAmount);
+        vm.stopPrank();
+    }
+
+    function testUserHealthyFactorIsRight() public {
+        uint256 amount = 10 * 1e18;
+        uint256 mintAmount = 150000 * 1e18;
+
+        _addCommonColleralTokens();
+        vm.startPrank(frank);
+        btc.mint(frank, amount);
+        btc.approve(address(bank), amount);
+        bank.depositCollateral(address(btc), amount);
+
+        (uint256 totalDscMinted, uint256 collateralValueInUsd) = bank.getAccountInformation(frank);
+
+        console.log("totalDscMinted", totalDscMinted, "collateralValueInUsd", collateralValueInUsd);
+
+        uint256 gusdMintAmount = collateralValueInUsd / 2;
+        bank.mintGusd(gusdMintAmount);
+
+        (totalDscMinted, collateralValueInUsd) = bank.getAccountInformation(frank);
+
+        console.log("totalDscMinted", totalDscMinted, "collateralValueInUsd", collateralValueInUsd);
+
+        uint256 rawHealthRatio = collateralValueInUsd * 1e18 / totalDscMinted;
+        uint256 healthFactor = rawHealthRatio * LIQUIDATION_THRESHOLD / LIQUIDATION_PRECISION;
+
+        console.log("healthFactor %s", healthFactor);
+
+        assertEq(healthFactor, 1e18);
+
+        assertEq(gusd.balanceOf(frank), gusdMintAmount);
+
+        bank.burn(gusdMintAmount / 2);
+
+        (totalDscMinted, collateralValueInUsd) = bank.getAccountInformation(frank);
+
+        console.log("totalDscMinted", totalDscMinted, "collateralValueInUsd", collateralValueInUsd);
+
+        rawHealthRatio = collateralValueInUsd * 1e18 / totalDscMinted;
+        healthFactor = rawHealthRatio * LIQUIDATION_THRESHOLD / LIQUIDATION_PRECISION;
+
+        console.log("healthFactor %s", healthFactor);
+
+        assertEq(healthFactor, 2 * 1e18);
+
         vm.stopPrank();
     }
 }

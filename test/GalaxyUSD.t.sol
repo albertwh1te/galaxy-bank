@@ -1,17 +1,28 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.18;
 
 import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
 import {GalaxyUSD} from "../src/GalaxyUSD.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
+import {MockV3Aggregator} from "./mocks/MockV3Aggregator.sol";
+import {MockERC20} from "./mocks/MockERC20.sol";
 
-contract CounterTest is Test {
+contract GalaxyUSDTest is Test {
     using FixedPointMathLib for uint256;
 
     GalaxyUSD private gusd;
     uint256 private constant FEE = 3;
     uint256 private constant RATIO = 1e4;
+
+    MockV3Aggregator private btcPriceFeed;
+    MockV3Aggregator private ethPriceFeed;
+    MockV3Aggregator private gmxPriceFeed;
+    MockV3Aggregator private arbPriceFeed;
+    MockERC20 private btc;
+    MockERC20 private eth;
+    MockERC20 private gmx;
+    MockERC20 private arb;
 
     address owner = address(42);
     address alice = address(43);
