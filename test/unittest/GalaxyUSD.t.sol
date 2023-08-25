@@ -3,10 +3,10 @@ pragma solidity ^0.8.18;
 
 import "forge-std/console.sol";
 import {Test} from "forge-std/Test.sol";
-import {GalaxyUSD} from "../src/GalaxyUSD.sol";
+import {GalaxyUSD} from "../../src/GalaxyUSD.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
-import {MockV3Aggregator} from "./mocks/MockV3Aggregator.sol";
-import {MockERC20} from "./mocks/MockERC20.sol";
+import {MockV3Aggregator} from "../mocks/MockV3Aggregator.sol";
+import {MockERC20} from "../mocks/MockERC20.sol";
 
 contract GalaxyUSDTest is Test {
     using FixedPointMathLib for uint256;
