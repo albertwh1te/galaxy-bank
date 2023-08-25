@@ -19,9 +19,9 @@ contract GalaxyUSD is ERC20, Owned {
     # PUBLIC VARIABLE #
     ###################
     */
-    uint256 private fee;
     uint256 private constant RATIO = 1e4;
-    address private treasure;
+    uint256 private immutable fee;
+    address private immutable treasure;
 
     constructor(uint256 _fee, address _treasure) ERC20("Galaxy USD", "GUSD", 18) Owned(msg.sender) {
         fee = _fee;

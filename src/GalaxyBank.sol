@@ -147,11 +147,16 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     function _getAccountCollateralValue(address user) internal view returns (uint256 totalCollateralValueInUsd) {
         // loop through each collateral token, get the amount they have deposited, and map it to
         // the price, to get the USD value
-        for (uint256 i = 0; i < collateralTokens.length; i++) {
+        uint256 tokenLength = collateralTokens.length;
+        for (uint256 i; i < tokenLength;) {
             address token = collateralTokens[i];
             uint256 amount = collateralDeposited[user][token];
             totalCollateralValueInUsd += _getUsdValue(token, amount);
+            unchecked {
+                ++i;
+            }
         }
+
         return totalCollateralValueInUsd;
     }
 

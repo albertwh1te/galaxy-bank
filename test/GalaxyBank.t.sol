@@ -36,7 +36,7 @@ contract TestGalaxyBank is Test {
     address owner = address(42);
     address alice = address(43);
     address frank = address(44);
-    address treasure = address(45);
+    address immutabletreasure = address(45);
 
     GalaxyBank bank;
     GalaxyUSD gusd;
