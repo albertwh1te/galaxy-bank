@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-// TODO: delete log
-import "forge-std/console.sol";
 import {Owned} from "solmate/auth/Owned.sol";
 import {ERC20} from "solmate/tokens/ERC20.sol";
 import {FixedPointMathLib} from "solmate/utils/FixedPointMathLib.sol";
@@ -131,7 +129,6 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     {
         if (totalDscMinted == 0) return 1e18;
         uint256 collateralAdjustedForThreshold = (collateralValueInUsd * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
-        console.log("collateralValueInUsd", collateralValueInUsd, "totalDscMinted", totalDscMinted);
         return (collateralAdjustedForThreshold * 1e18) / totalDscMinted;
     }
 
@@ -163,14 +160,12 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     function _getTokenAmountFromUsd(address token, uint256 usdAmount) internal view returns (uint256 tokenAmount) {
         IAggregatorV3 priceFeed = IAggregatorV3(tokenPriceFeed[token]);
         (, int256 price,,,) = priceFeed.safeGetLatestPrice();
-        console.log("priceFeed.decimals()", priceFeed.decimals());
         return usdAmount / uint256(price) * (10 ** priceFeed.decimals());
     }
 
     function _getUsdValue(address token, uint256 amount) internal view returns (uint256) {
         IAggregatorV3 priceFeed = IAggregatorV3(tokenPriceFeed[token]);
         (, int256 price,,,) = priceFeed.safeGetLatestPrice();
-        console.log("amount", amount);
         // chainlink_price * token_amount * gusd_decimal/(price_feed_decimal*token_decimal)
         return ((uint256(price)) * amount * (10 ** gusd.decimals()))
             / (10 ** priceFeed.decimals() * (10 ** ERC20(token).decimals()));
@@ -192,8 +187,6 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     function _depositCollateral(address collateral, uint256 amount) internal {
         collateralDeposited[msg.sender][collateral] += amount;
         emit CollateralDeposited(msg.sender, collateral, amount);
-        console.log("start collateral transfer", amount);
-        console.log("balance", ERC20(collateral).balanceOf(msg.sender));
         ERC20(collateral).transferFrom(msg.sender, address(this), amount);
     }
 
@@ -207,8 +200,6 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     */
     function _revertIfHealthFactorIsBroken(address user) internal view {
         uint256 userHealthFactor = _healthFactor(user);
-        // todo: delete log
-        console.log("userHealthFactor", userHealthFactor);
         if (userHealthFactor < MIN_HEALTH_FACTOR) {
             revert GalaxyBank__BreaksHealthFactor();
         }
@@ -307,9 +298,7 @@ contract GalaxyBank is Owned, ReentrancyGuard {
         moreThanZero(burnGusdAmount)
     {
         _redeemCollateral(msg.sender, address(this), collateral, amount);
-        console.log("redeemed");
         _burn(burnGusdAmount);
-        console.log("burned");
         _revertIfHealthFactorIsBroken(msg.sender);
     }
 
@@ -329,13 +318,9 @@ contract GalaxyBank is Owned, ReentrancyGuard {
 
         uint256 tokenAmount = _getTokenAmountFromUsd(collateral, debtToCover);
 
-        console.log("tokenAmount: ", tokenAmount);
-
         uint256 bonusCollateral = (tokenAmount * LIQUIDATION_BONUS) / LIQUIDATION_PRECISION;
 
         uint256 totalCollateralToRedeem = tokenAmount + bonusCollateral;
-
-        console.log("totalCollateralToRedeem: ", totalCollateralToRedeem);
 
         _redeemCollateral(user, msg.sender, collateral, totalCollateralToRedeem);
 
