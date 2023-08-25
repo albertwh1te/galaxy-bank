@@ -27,6 +27,9 @@ contract Invariants is StdInvariant, Test {
     uint256 BTC_START_PRICE = 3139151000000;
     uint256 ETH_START_PRICE = 184165000000;
 
+    uint256 private constant LIQUIDATION_THRESHOLD = 50; // 200% overcollateralized
+    uint256 private constant LIQUIDATION_PRECISION = 100;
+
     MockERC20[] private tokens;
 
     mapping(address token => address priceFeed) tokenPriceFeed;
@@ -81,7 +84,7 @@ contract Invariants is StdInvariant, Test {
 
     function invariant_protocolMustBeSolvent() public {
         console.log("start ");
-        uint256 protocolTotalAssets = 0;
+        uint256 protocolTotalAssetsUsd = 0;
         // cache length for gas saving
         uint256 tokenLength = tokens.length;
 
@@ -99,14 +102,26 @@ contract Invariants is StdInvariant, Test {
 
             console.log("tokenValues: %s", tokenAmount);
 
-            protocolTotalAssets += tokenValues;
+            protocolTotalAssetsUsd += tokenValues;
         }
 
-        console.log("protocolTotalAssets: %s", protocolTotalAssets);
+        console.log("protocolTotalAssets: %s", protocolTotalAssetsUsd);
 
         uint256 protocolTotalLiabilities = gusd.totalSupply();
         console.log("protocolTotalLiabilities: %s", protocolTotalLiabilities);
 
-        assertGe(protocolTotalAssets, protocolTotalLiabilities);
+        uint256 collateralAdjustedForThreshold = protocolTotalAssetsUsd * LIQUIDATION_THRESHOLD / LIQUIDATION_PRECISION;
+        uint256 protocolHealthFactorInPercent;
+        if (protocolTotalLiabilities > 0) {
+            protocolHealthFactorInPercent = collateralAdjustedForThreshold * 100 / protocolTotalLiabilities;
+        } else {
+            protocolHealthFactorInPercent = 100;
+        }
+
+        console.log("protocolHealthFactor", protocolHealthFactorInPercent);
+
+        assertGe(protocolTotalAssetsUsd, protocolTotalLiabilities);
+
+        assertGe(protocolHealthFactorInPercent, 100);
     }
 }

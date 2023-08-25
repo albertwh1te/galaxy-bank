@@ -54,6 +54,7 @@ contract GalaxyBank is Owned, ReentrancyGuard {
     ############
     */
     uint256 private constant MIN_HEALTH_FACTOR = 1e18;
+    uint256 private constant HEALTH_FACOTOR_PRECISION = 1e18;
     uint256 private constant LIQUIDATION_THRESHOLD = 50; // 200% overcollateralized
     uint256 private constant LIQUIDATION_PRECISION = 100;
 
@@ -123,13 +124,12 @@ contract GalaxyBank is Owned, ReentrancyGuard {
 
     function _calculateHealthFactor(uint256 totalDscMinted, uint256 collateralValueInUsd)
         internal
-        // pure
-        view
+        pure
         returns (uint256)
     {
-        if (totalDscMinted == 0) return 1e18;
+        if (totalDscMinted == 0) return HEALTH_FACOTOR_PRECISION;
         uint256 collateralAdjustedForThreshold = (collateralValueInUsd * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
-        return (collateralAdjustedForThreshold * 1e18) / totalDscMinted;
+        return (collateralAdjustedForThreshold * HEALTH_FACOTOR_PRECISION) / totalDscMinted;
     }
 
     function _getAccountInformation(address user)
@@ -153,7 +153,6 @@ contract GalaxyBank is Owned, ReentrancyGuard {
                 ++i;
             }
         }
-
         return totalCollateralValueInUsd;
     }
 

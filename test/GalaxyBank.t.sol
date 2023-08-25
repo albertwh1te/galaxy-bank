@@ -253,7 +253,6 @@ contract TestGalaxyBank is Test {
 
     function testUserHealthyFactorIsRight() public {
         uint256 amount = 10 * 1e18;
-        uint256 mintAmount = 150000 * 1e18;
 
         _addCommonColleralTokens();
         vm.startPrank(frank);

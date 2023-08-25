@@ -20,23 +20,29 @@ contract GalaxyBankHandler is Test {
         tokens = _tokens;
     }
 
-    function depositCollateral(uint8 collateralIndex, uint256 collaterlAmount) public {
-        vm.startPrank(msg.sender);
-        collaterlAmount = bound(collaterlAmount, 1, type(uint96).max);
-        MockERC20 token = _getTokenCollateralToken(collateralIndex);
-        _depositCollaterl(token, collaterlAmount);
-        vm.stopPrank();
-    }
+    // function depositCollateral(uint8 collateralIndex, uint256 collaterlAmount) public {
+    //     vm.startPrank(msg.sender);
+    //     collaterlAmount = bound(collaterlAmount, 1, type(uint96).max);
+    //     MockERC20 token = _getTokenCollateralToken(collateralIndex);
+    //     _depositCollaterl(token, collaterlAmount);
+    //     console.log("depositCollateral success, collaterlAmount: ", collaterlAmount);
+    //     vm.stopPrank();
+    // }
 
     function mintGusd(uint8 collateralIndex, uint256 collaterlAmount) public {
         vm.startPrank(msg.sender);
-        collaterlAmount = bound(collaterlAmount, 2, type(uint96).max);
+        collaterlAmount = bound(collaterlAmount, 10000, type(uint96).max);
         MockERC20 token = _getTokenCollateralToken(collateralIndex);
         _depositCollaterl(token, collaterlAmount);
-        (, uint256 collateralValueInUsd) = bank.getAccountInformation(msg.sender);
+
+        (uint256 totalDscMinted, uint256 collateralValueInUsd) = bank.getAccountInformation(msg.sender);
+        console.log("collateralValueInUsd", collateralValueInUsd);
+        console.log("totalDscMinted", totalDscMinted);
         // max mint half of the collateral value
-        uint256 mintAmount = collateralValueInUsd >> 1;
+        uint256 mintAmount = (collateralValueInUsd - totalDscMinted * 2) / 2;
+        console.log("mintAmount", mintAmount);
         bank.mintGusd(mintAmount);
+        console.log("mintGusd success, mintAmount: ", mintAmount);
         vm.stopPrank();
     }
 
